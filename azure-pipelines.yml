@@ -2,25 +2,19 @@ trigger:
   - main
 
 pool:
-  name: Default
+  name: Default   # self-hosted agent
 
 variables:
   azureSubscription: 'cost-connection'
   functionAppName: 'apptestdeploy'
-  pythonVersion: '3.11'
 
 steps:
-  # - task: UsePythonVersion@0
-  #   inputs:
-  #     versionSpec: '$(pythonVersion)'
-  #   displayName: 'Install Python'
-
-  - script: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt --target="./.python_packages/lib/site-packages"
-    displayName: 'Install Python dependencies'
+  # ❌ DO NOT install Python dependencies in pipeline
+  # ❌ DO NOT use UsePythonVersion
+  # Azure Function runtime will handle dependencies via Oryx
 
   - task: ArchiveFiles@2
+    displayName: 'Archive Function App'
     inputs:
       rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
       includeRootFolder: false
@@ -29,9 +23,11 @@ steps:
       replaceExistingArchive: true
 
   - task: AzureFunctionApp@2
+    displayName: 'Deploy to Azure Function App'
     inputs:
       azureSubscription: '$(azureSubscription)'
       appType: functionAppLinux
       appName: '$(functionAppName)'
       package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
-    displayName: 'Deploy to Azure Function App'
+      scmDoBuildDuringDeployment: true
+      enableOryxBuild: true

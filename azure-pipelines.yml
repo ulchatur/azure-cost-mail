@@ -1,0 +1,37 @@
+trigger:
+  - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  azureSubscription: 'my-billingreport-connection'
+  functionAppName: 'apptestdeploy'
+  pythonVersion: '3.11'
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '$(pythonVersion)'
+    displayName: 'Install Python'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt --target="./.python_packages/lib/site-packages"
+    displayName: 'Install Python dependencies'
+
+  - task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+      includeRootFolder: false
+      archiveType: zip
+      archiveFile: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
+      replaceExistingArchive: true
+
+  - task: AzureFunctionApp@2
+    inputs:
+      azureSubscription: '$(azureSubscription)'
+      appType: functionAppLinux
+      appName: '$(functionAppName)'
+      package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
+    displayName: 'Deploy to Azure Function App'

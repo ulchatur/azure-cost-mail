@@ -2,7 +2,7 @@ trigger:
   - master
 
 pool:
-  vmImage: Default
+  name: Default
 
 variables:
   azureSubscription: 'cost-connection'

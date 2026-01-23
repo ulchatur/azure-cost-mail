@@ -1,5 +1,5 @@
 trigger:
-  - master
+  - main
 
 pool:
   name: Default
@@ -10,10 +10,10 @@ variables:
   pythonVersion: '3.11'
 
 steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '$(pythonVersion)'
-    displayName: 'Install Python'
+  # - task: UsePythonVersion@0
+  #   inputs:
+  #     versionSpec: '$(pythonVersion)'
+  #   displayName: 'Install Python'
 
   - script: |
       python -m pip install --upgrade pip

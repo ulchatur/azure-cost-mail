@@ -3,3 +3,4 @@ azure-storage-blob
 azure-communication-email
 requests
 openpyxl
+cryptography==41.0.7

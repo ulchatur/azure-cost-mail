@@ -5,7 +5,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  azureSubscription: 'cost-connection'
+  azureService: 'cost-connection'
   functionAppName: 'apptestdeploy'
   pythonVersion: '3.11'
 

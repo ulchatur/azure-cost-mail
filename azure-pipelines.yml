@@ -2,17 +2,13 @@ trigger:
   - main
 
 pool:
-  name: Default   # self-hosted agent
+  name: Default
 
 variables:
   azureSubscription: 'cost-connection'
   functionAppName: 'apptestdeploy'
 
 steps:
-  # ❌ DO NOT install Python dependencies in pipeline
-  # ❌ DO NOT use UsePythonVersion
-  # Azure Function runtime will handle dependencies via Oryx
-
   - task: ArchiveFiles@2
     displayName: 'Archive Function App'
     inputs:
@@ -29,5 +25,4 @@ steps:
       appType: functionAppLinux
       appName: '$(functionAppName)'
       package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
-      scmDoBuildDuringDeployment: true
-      enableOryxBuild: true
+      deploymentMethod: 'zipDeploy'

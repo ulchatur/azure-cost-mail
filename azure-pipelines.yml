@@ -25,4 +25,4 @@ steps:
       appType: functionAppLinux
       appName: '$(functionAppName)'
       package: '$(Build.ArtifactStagingDirectory)/functionapp.zip'
-      deploymentMethod: 'zipDeploy'
+      deploymentMethod: 'auto'

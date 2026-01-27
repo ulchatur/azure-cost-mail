@@ -6,7 +6,7 @@ import io
 import logging
 import traceback
 import csv
-from azure.storage.blob import BlobServiceClient
+import base64
 from azure.communication.email import EmailClient
 import azure.functions as func
 
@@ -204,42 +204,32 @@ def generate_csv(all_costs_data, start_date, end_date):
             rows = cost_data.get("properties", {}).get("rows", [])
             if not rows or len(rows) == 0:
                 total_cost = 0.0
-                status = "No usage data"
+                status = "No Cost Data"
             else:
-                total_cost = float(rows[0][0]) if len(rows[0]) > 0 else 0.0
-                status = "Active" if total_cost > 0 else "No charges"
+                # Cost is typically in first row, first column
+                total_cost = float(rows[0][0]) if rows and len(rows[0]) > 0 else 0.0
+                status = "Success"
             
             total_cost_all += total_cost
             
+            # Write row
             csv_writer.writerow([
                 subscription_name,
                 subscription_id,
                 start_date,
                 end_date,
-                round(total_cost, 2),
+                f"{total_cost:.2f}",
                 status
             ])
         
-        # Add total row
+        # Write summary row
         csv_writer.writerow([])
-        csv_writer.writerow([
-            "TOTAL",
-            "",
-            "",
-            "",
-            round(total_cost_all, 2),
-            ""
-        ])
-        
-        # Add summary info
-        csv_writer.writerow([])
-        csv_writer.writerow([f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
-        csv_writer.writerow([f"Total Subscriptions: {len(all_costs_data)}"])
+        csv_writer.writerow(["TOTAL", "", "", "", f"{total_cost_all:.2f}", ""])
         
         csv_content = csv_buffer.getvalue()
-        csv_buffer.close()
+        logger.info(f"CSV generated with {len(all_costs_data)} subscriptions")
+        logger.info(f"Total cost across all subscriptions: ${total_cost_all:.2f}")
         
-        logger.info(f"CSV file generated successfully ({len(all_costs_data)} subscriptions, Total: ${round(total_cost_all, 2)})")
         return csv_content, total_cost_all
         
     except Exception as e:
@@ -247,161 +237,76 @@ def generate_csv(all_costs_data, start_date, end_date):
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
-def upload_to_blob_storage(csv_content, filename):
-    """Upload CSV file to Azure Blob Storage"""
+def send_email_with_csv_attachment(csv_content, filename, start_date, end_date, total_cost, subscription_count):
+    """Send email with CSV as attachment using Azure Communication Service"""
     try:
-        logger.info("Uploading CSV to Azure Blob Storage...")
+        logger.info("Preparing email with CSV attachment...")
         
-        # Get Blob Storage connection string from environment variable
-        STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-        CONTAINER_NAME = os.environ.get("BLOB_CONTAINER_NAME", "azure-cost-reports")
-        
-        if not STORAGE_CONNECTION_STRING:
-            raise ValueError("AZURE_STORAGE_CONNECTION_STRING environment variable is not set")
-        
-        logger.info(f"Container Name: {CONTAINER_NAME}")
-        logger.info(f"Blob Name: {filename}")
-        
-        # Create BlobServiceClient
-        blob_service_client = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-        
-        # Get container client (create container if it doesn't exist)
-        container_client = blob_service_client.get_container_client(CONTAINER_NAME)
-        try:
-            container_client.create_container()
-            logger.info(f"Container '{CONTAINER_NAME}' created")
-        except Exception as e:
-            if "ContainerAlreadyExists" in str(e):
-                logger.info(f"Container '{CONTAINER_NAME}' already exists")
-            else:
-                logger.warning(f"Container check warning: {str(e)}")
-        
-        # Get blob client and upload
-        blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=filename)
-        
-        # Upload CSV content
-        blob_client.upload_blob(csv_content, overwrite=True)
-        
-        blob_url = blob_client.url
-        logger.info(f"✓ CSV uploaded successfully to: {blob_url}")
-        
-        return blob_url
-        
-    except ValueError as ve:
-        logger.error(f"Configuration error: {str(ve)}")
-        raise
-    except Exception as e:
-        logger.error(f"Error uploading to blob storage: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise
-
-def send_email_with_acs(blob_url, filename, start_date, end_date, total_cost, subscription_count):
-    """Send email notification using Azure Communication Service"""
-    try:
-        logger.info("Sending email via Azure Communication Service...")
-        
-        # Get ACS connection string and sender email from environment variables
+        # Get environment variables
         ACS_CONNECTION_STRING = os.environ.get("ACS_CONNECTION_STRING")
-        SENDER_EMAIL = os.environ.get("ACS_SENDER_EMAIL")  # Format: DoNotReply@yourdomain.com
-        RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", "vardhanullas7@gmail.com")
+        SENDER_EMAIL = os.environ.get("ACS_SENDER_EMAIL")
+        RECIPIENT_EMAIL = os.environ.get("ACS_RECIPIENT_EMAIL")
         
+        # Validate environment variables
         if not ACS_CONNECTION_STRING:
             raise ValueError("ACS_CONNECTION_STRING environment variable is not set")
         if not SENDER_EMAIL:
             raise ValueError("ACS_SENDER_EMAIL environment variable is not set")
+        if not RECIPIENT_EMAIL:
+            raise ValueError("ACS_RECIPIENT_EMAIL environment variable is not set")
         
         logger.info(f"Sender: {SENDER_EMAIL}")
         logger.info(f"Recipient: {RECIPIENT_EMAIL}")
         
-        # Create EmailClient
+        # Initialize Email Client
         email_client = EmailClient.from_connection_string(ACS_CONNECTION_STRING)
         
-        # Prepare email content
-        subject = f"Azure Cost Report - {start_date} to {end_date}"
+        # Prepare email subject and body
+        subject = f"Azure Cost Report: {start_date} to {end_date}"
+        
+        plain_text_content = f"""
+Azure Cost Report
+
+Report Period: {start_date} to {end_date}
+Total Subscriptions: {subscription_count}
+Total Cost: ${total_cost:.2f} USD
+
+Please find the detailed cost report attached as CSV file.
+
+This is an automated email. Please do not reply.
+"""
         
         html_content = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #0078D4; border-bottom: 3px solid #0078D4; padding-bottom: 10px;">
-                        Azure Cost Report
-                    </h2>
-                    
-                    <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                        <h3 style="margin-top: 0; color: #0078D4;">Report Summary</h3>
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Period:</strong></td>
-                                <td style="padding: 8px 0;">{start_date} to {end_date}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Total Subscriptions:</strong></td>
-                                <td style="padding: 8px 0;">{subscription_count}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Total Cost:</strong></td>
-                                <td style="padding: 8px 0; color: #0078D4; font-size: 18px;">
-                                    <strong>${total_cost:.2f} USD</strong>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Report File:</strong></td>
-                                <td style="padding: 8px 0;">{filename}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Generated:</strong></td>
-                                <td style="padding: 8px 0;">{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</td>
-                            </tr>
-                        </table>
-                    </div>
-                    
-                    <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #0078D4;">
-                        <p style="margin: 0;"><strong>📊 Download Report:</strong></p>
-                        <p style="margin: 10px 0 0 0;">
-                            <a href="{blob_url}" 
-                               style="display: inline-block; padding: 10px 20px; background-color: #0078D4; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                                Download CSV Report
-                            </a>
-                        </p>
-                    </div>
-                    
-                    <p>The detailed Azure cost report has been generated and uploaded to Blob Storage.</p>
-                    
-                    <p><strong>Report Contents:</strong></p>
-                    <ul>
-                        <li>Individual subscription costs breakdown</li>
-                        <li>Subscription status (Active/No charges/No usage)</li>
-                        <li>Date range: {start_date} to {end_date}</li>
-                        <li>Total cost summary: <strong>${total_cost:.2f} USD</strong></li>
-                    </ul>
-                    
-                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
-                        <p>This is an automated report generated by Azure Cost Management Function.</p>
-                        <p>The CSV file is available in Azure Blob Storage for download.</p>
-                        <p>If you have any questions, please contact your Azure administrator.</p>
-                    </div>
-                </div>
-            </body>
-        </html>
-        """
+<html>
+<body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+        <h2 style="color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 10px;">
+            Azure Cost Report
+        </h2>
         
-        # Plain text version (fallback)
-        plain_text_content = f"""
-Azure Cost Report - {start_date} to {end_date}
-
-Report Summary:
-- Period: {start_date} to {end_date}
-- Total Subscriptions: {subscription_count}
-- Total Cost: ${total_cost:.2f} USD
-- Report File: {filename}
-- Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-Download Report: {blob_url}
-
-This is an automated report generated by Azure Cost Management Function.
-        """
+        <div style="margin: 20px 0; padding: 15px; background-color: #f0f8ff; border-left: 4px solid #0078d4;">
+            <p style="margin: 5px 0;"><strong>Report Period:</strong> {start_date} to {end_date}</p>
+            <p style="margin: 5px 0;"><strong>Total Subscriptions:</strong> {subscription_count}</p>
+            <p style="margin: 5px 0;"><strong>Total Cost:</strong> <span style="font-size: 18px; color: #0078d4; font-weight: bold;">${total_cost:.2f} USD</span></p>
+        </div>
         
-        # Prepare email message
+        <div style="margin: 20px 0;">
+            <p>Please find the detailed cost breakdown attached as a CSV file.</p>
+        </div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
+            <p><em>This is an automated email. Please do not reply.</em></p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Convert CSV content to bytes for attachment
+        csv_bytes = csv_content.encode('utf-8')
+        csv_base64 = base64.b64encode(csv_bytes).decode('utf-8')
+        
+        # Prepare email message with attachment
         message = {
             "senderAddress": SENDER_EMAIL,
             "recipients": {
@@ -411,11 +316,18 @@ This is an automated report generated by Azure Cost Management Function.
                 "subject": subject,
                 "plainText": plain_text_content,
                 "html": html_content
-            }
+            },
+            "attachments": [
+                {
+                    "name": filename,
+                    "contentType": "text/csv",
+                    "contentInBase64": csv_base64
+                }
+            ]
         }
         
         # Send email
-        logger.info("Sending email via ACS...")
+        logger.info("Sending email via ACS with CSV attachment...")
         poller = email_client.begin_send(message)
         result = poller.result()
         
@@ -423,6 +335,7 @@ This is an automated report generated by Azure Cost Management Function.
         logger.info(f"  Message ID: {result['id']}")
         logger.info(f"  Status: {result['status']}")
         logger.info(f"  Recipient: {RECIPIENT_EMAIL}")
+        logger.info(f"  Attachment: {filename}")
         
         return True
         
@@ -438,7 +351,7 @@ This is an automated report generated by Azure Cost Management Function.
 def main(req: func.HttpRequest) -> func.HttpResponse:
     """Main function entry point"""
     logger.info('=' * 80)
-    logger.info('Azure Cost Report to Blob Storage with Email - Starting execution')
+    logger.info('Azure Cost Report Direct Email - Starting execution')
     logger.info('=' * 80)
     
     try:
@@ -448,9 +361,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "TENANT_ID", 
             "CLIENT_ID", 
             "CLIENT_SECRET", 
-            "AZURE_STORAGE_CONNECTION_STRING",
             "ACS_CONNECTION_STRING",
-            "ACS_SENDER_EMAIL"
+            "ACS_SENDER_EMAIL",
+            "ACS_RECIPIENT_EMAIL"
         ]
         missing_vars = [var for var in required_vars if not os.environ.get(var)]
         
@@ -519,19 +432,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Step 6: Generate CSV file
         logger.info("Step 6: Generating CSV report...")
         csv_content, total_cost = generate_csv(all_costs_data, start_date, end_date)
+        filename = f"azure_cost_report_{start_date}_to_{end_date}.csv"
         logger.info("✓ CSV report generated")
         
-        # Step 7: Upload to Blob Storage
-        filename = f"azure_cost_report_{start_date}_to_{end_date}.csv"
-        logger.info(f"Step 7: Uploading CSV to Blob Storage: {filename}")
-        
-        blob_url = upload_to_blob_storage(csv_content, filename)
-        logger.info("✓ CSV uploaded to Blob Storage successfully")
-        
-        # Step 8: Send email notification via Azure Communication Service
-        logger.info("Step 8: Sending email notification...")
-        send_email_with_acs(blob_url, filename, start_date, end_date, total_cost, len(all_costs_data))
-        logger.info("✓ Email notification sent successfully")
+        # Step 7: Send email with CSV attachment
+        logger.info("Step 7: Sending email with CSV attachment...")
+        send_email_with_csv_attachment(csv_content, filename, start_date, end_date, total_cost, len(all_costs_data))
+        logger.info("✓ Email sent successfully with CSV attachment")
         
         logger.info('=' * 80)
         logger.info('Execution completed successfully!')
@@ -540,8 +447,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             body=json.dumps({
                 "status": "success",
-                "message": "Cost report CSV uploaded to Blob Storage and email notification sent",
-                "blob_url": blob_url,
+                "message": "Cost report CSV sent directly via email",
                 "report_period": f"{start_date} to {end_date}",
                 "total_subscriptions": len(all_costs_data),
                 "total_cost": round(total_cost, 2),

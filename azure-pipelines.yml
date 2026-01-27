@@ -1,12 +1,12 @@
-# trigger:
-#   - main
+trigger:
+  - main
 
 pool:
   name: Default
 
 variables:
   azureSubscription: 'cost-connection'
-  functionAppName: 'apptestdeploy'
+  functionAppName: 'cost-demo'
 
 steps:
   - task: ArchiveFiles@2

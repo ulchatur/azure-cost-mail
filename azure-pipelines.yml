@@ -7,18 +7,11 @@ pool:
 variables:
   azureSubscription: 'cost-connection'
   functionAppName: 'cost-demo'
-  pythonVersion: '3.11'
 
 steps:
-  # Add Python setup
-  - task: UsePythonVersion@0
-    displayName: 'Use Python 3.11'
-    inputs:
-      versionSpec: '$(pythonVersion)'
-
   # Install dependencies locally
   - script: |
-      python -m pip install --upgrade pip
+      python3.11 -m pip install --upgrade pip
       pip install --target="./.python_packages/lib/site-packages" -r requirements.txt
     displayName: 'Install dependencies'
 

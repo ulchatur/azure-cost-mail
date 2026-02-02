@@ -195,48 +195,56 @@ def generate_csv(all_costs_data, start_date_display, end_date_display):
         csv_writer = csv.writer(csv_buffer)
         
         # Write headers
-        headers = ["Subscription Name", "Subscription ID", "From Date", "To Date", "Total Cost (USD)", "Status"]
-        csv_writer.writerow(headers)
+        csv_writer.writerow([
+            "Subscription Name",
+            "Subscription ID",
+            f"Total Cost ({start_date_display} to {end_date_display})",
+            "Currency"
+        ])
         
-        total_cost_all = 0.0
+        total_cost = 0
         
         # Write data for each subscription
-        for sub_data in all_costs_data:
-            subscription_name = sub_data["subscription_name"]
-            subscription_id = sub_data["subscription_id"]
-            cost_data = sub_data["cost_data"]
+        for cost_item in all_costs_data:
+            sub_name = cost_item["subscription_name"]
+            sub_id = cost_item["subscription_id"]
+            cost_data = cost_item["cost_data"]
             
-            # Extract cost
             rows = cost_data.get("properties", {}).get("rows", [])
-            if not rows or len(rows) == 0:
-                total_cost = 0.0
-                status = "No Cost Data"
+            
+            if rows:
+                # Extract cost and currency from the first row
+                cost = rows[0][0] if len(rows[0]) > 0 else 0
+                currency = rows[0][1] if len(rows[0]) > 1 else "USD"
+                total_cost += cost
+                
+                csv_writer.writerow([
+                    sub_name,
+                    sub_id,
+                    f"{cost:.2f}",
+                    currency
+                ])
             else:
-                # Cost is typically in first row, first column
-                total_cost = float(rows[0][0]) if rows and len(rows[0]) > 0 else 0.0
-                status = "Success"
-            
-            total_cost_all += total_cost
-            
-            # Write row with mm-dd-yyyy date format
-            csv_writer.writerow([
-                subscription_name,
-                subscription_id,
-                start_date_display,
-                end_date_display,
-                f"{total_cost:.2f}",
-                status
-            ])
+                csv_writer.writerow([
+                    sub_name,
+                    sub_id,
+                    "0.00",
+                    "USD"
+                ])
         
-        # Write summary row
+        # Write total row
         csv_writer.writerow([])
-        csv_writer.writerow(["TOTAL", "", "", "", f"{total_cost_all:.2f}", ""])
+        csv_writer.writerow([
+            "TOTAL",
+            "",
+            f"{total_cost:.2f}",
+            "USD"
+        ])
         
         csv_content = csv_buffer.getvalue()
-        logger.info(f"CSV generated with {len(all_costs_data)} subscriptions")
-        logger.info(f"Total cost across all subscriptions: ${total_cost_all:.2f}")
+        logger.info(f"CSV generated with {len(all_costs_data)} subscriptions, Total cost: ${total_cost:.2f}")
         
-        return csv_content, total_cost_all
+        return csv_content, total_cost
         
     except Exception as e:
         logger.error(f"Error generating CSV: {str(e)}")
@@ -244,91 +252,79 @@ def generate_csv(all_costs_data, start_date_display, end_date_display):
         raise
 
 def send_email_with_csv_attachment(csv_content, filename, start_date_display, end_date_display, total_cost, subscription_count):
-    """Send email with CSV as attachment using Azure Communication Service"""
+    """Send email with CSV attachment using Azure Communication Services"""
     try:
-        logger.info("Preparing email with CSV attachment...")
+        logger.info("Preparing to send email via Azure Communication Services...")
         
         # Get environment variables
         ACS_CONNECTION_STRING = os.environ.get("ACS_CONNECTION_STRING")
-        SENDER_EMAIL = os.environ.get("ACS_SENDER_EMAIL")
-        RECIPIENT_EMAIL = os.environ.get("ACS_RECIPIENT_EMAIL")
+        ACS_SENDER_EMAIL = os.environ.get("ACS_SENDER_EMAIL")
+        ACS_RECIPIENT_EMAIL = os.environ.get("ACS_RECIPIENT_EMAIL")
         
-        # Validate environment variables
+        # Validate required environment variables
         if not ACS_CONNECTION_STRING:
             raise ValueError("ACS_CONNECTION_STRING environment variable is not set")
-        if not SENDER_EMAIL:
+        if not ACS_SENDER_EMAIL:
             raise ValueError("ACS_SENDER_EMAIL environment variable is not set")
-        if not RECIPIENT_EMAIL:
+        if not ACS_RECIPIENT_EMAIL:
             raise ValueError("ACS_RECIPIENT_EMAIL environment variable is not set")
         
-        logger.info(f"Sender: {SENDER_EMAIL}")
-        logger.info(f"Recipient(s): {RECIPIENT_EMAIL}")
+        logger.info(f"Sender email: {ACS_SENDER_EMAIL}")
+        logger.info(f"Recipient email(s): {ACS_RECIPIENT_EMAIL}")
         
-        # Parse recipient emails - support comma-separated list
-        recipient_emails = [email.strip() for email in RECIPIENT_EMAIL.split(',') if email.strip()]
-        recipient_list = [{"address": email} for email in recipient_emails]
-        
-        logger.info(f"Parsed {len(recipient_emails)} recipient(s):")
-        for email in recipient_emails:
-            logger.info(f"  - {email}")
-        
-        # Initialize Email Client
+        # Create EmailClient
         email_client = EmailClient.from_connection_string(ACS_CONNECTION_STRING)
         
-        # Prepare email subject and body with mm-dd-yyyy format
-        subject = f"Azure Cost Report: {start_date_display} to {end_date_display}"
+        # Parse recipient emails (support multiple recipients separated by comma or semicolon)
+        recipient_emails = [email.strip() for email in ACS_RECIPIENT_EMAIL.replace(';', ',').split(',')]
+        recipient_emails = [email for email in recipient_emails if email]  # Remove empty strings
         
-        plain_text_content = f"""
-Azure Cost Report
-
-Report Period: {start_date_display} to {end_date_display}
-Total Subscriptions: {subscription_count}
-Total Cost: ${total_cost:.2f} USD
-
-Please find the detailed cost report attached as CSV file.
-
-This is an automated email. Please do not reply.
-"""
+        if not recipient_emails:
+            raise ValueError("No valid recipient emails found in ACS_RECIPIENT_EMAIL")
         
+        logger.info(f"Sending to {len(recipient_emails)} recipient(s): {', '.join(recipient_emails)}")
+        
+        # Encode CSV to base64
+        csv_base64 = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
+        
+        # Create HTML email content
         html_content = f"""
-<html>
-<body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-        <h2 style="color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 10px;">
-            Azure Cost Report
-        </h2>
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 10px;">
+                    Azure Cost Report - Scheduled
+                </h2>
+                
+                <p>Hello,</p>
+                
+                <p>This is your scheduled Azure cost report for the period:</p>
+                
+                <div style="background-color: #f5f5f5; padding: 15px; border-left: 4px solid #0078d4; margin: 20px 0;">
+                    <strong>Report Period:</strong> {start_date_display} to {end_date_display}<br>
+                    <strong>Total Subscriptions:</strong> {subscription_count}<br>
+                    <strong>Total Cost:</strong> <span style="font-size: 1.2em; color: #0078d4;">${total_cost:,.2f} USD</span>
+                </div>
+                
+                <p>The detailed cost breakdown is attached as a CSV file: <strong>{filename}</strong></p>
+                
+                <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em;">
+                    This is an automated report generated by Azure Function (Timer Trigger).<br>
+                    Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} UTC
+                </p>
+            </div>
+        </body>
+        </html>
+        """
         
-        <div style="margin: 20px 0; padding: 15px; background-color: #f0f8ff; border-left: 4px solid #0078d4;">
-            <p style="margin: 5px 0;"><strong>Report Period:</strong> {start_date_display} to {end_date_display}</p>
-            <p style="margin: 5px 0;"><strong>Total Subscriptions:</strong> {subscription_count}</p>
-            <p style="margin: 5px 0;"><strong>Total Cost:</strong> <span style="font-size: 18px; color: #0078d4; font-weight: bold;">${total_cost:.2f} USD</span></p>
-        </div>
-        
-        <div style="margin: 20px 0;">
-            <p>Please find the detailed cost breakdown attached as a CSV file.</p>
-        </div>
-        
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666;">
-            <p><em>This is an automated email. Please do not reply.</em></p>
-        </div>
-    </div>
-</body>
-</html>
-"""
-        
-        # Convert CSV content to bytes for attachment
-        csv_bytes = csv_content.encode('utf-8')
-        csv_base64 = base64.b64encode(csv_bytes).decode('utf-8')
-        
-        # Prepare email message with attachment
+        # Create message structure
         message = {
-            "senderAddress": SENDER_EMAIL,
+            "senderAddress": ACS_SENDER_EMAIL,
             "recipients": {
-                "to": recipient_list
+                "to": [{"address": email} for email in recipient_emails]
             },
             "content": {
-                "subject": subject,
-                "plainText": plain_text_content,
+                "subject": f"Azure Cost Report - {start_date_display} to {end_date_display}",
                 "html": html_content
             },
             "attachments": [
@@ -362,11 +358,17 @@ This is an automated email. Please do not reply.
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
-def main(req: func.HttpRequest) -> func.HttpResponse:
-    """Main function entry point"""
+def main(mytimer: func.TimerRequest) -> None:
+    """Main function entry point for timer trigger"""
     logger.info('=' * 80)
-    logger.info('Azure Cost Report Direct Email - Starting execution')
+    logger.info('Azure Cost Report - Timer Triggered Execution Starting')
     logger.info('=' * 80)
+    
+    # Log timer information
+    if mytimer.past_due:
+        logger.info('⚠️  The timer is past due!')
+    
+    logger.info(f'Timer trigger fired at: {datetime.datetime.utcnow()}')
     
     try:
         # Step 1: Validate environment variables
@@ -385,14 +387,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             error_msg = f"Missing environment variables: {', '.join(missing_vars)}"
             logger.error(error_msg)
             logger.error("Please configure these in Azure Function App Settings")
-            return func.HttpResponse(
-                body=json.dumps({
-                    "error": error_msg,
-                    "details": "Configure environment variables in Azure Portal → Function App → Configuration → Application Settings"
-                }),
-                status_code=500,
-                mimetype="application/json"
-            )
+            raise ValueError(error_msg)
         
         logger.info("✓ All environment variables present")
         
@@ -412,14 +407,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         if not subscriptions:
             logger.warning("No subscriptions found")
-            return func.HttpResponse(
-                body=json.dumps({
-                    "error": "No subscriptions found",
-                    "details": "The service principal has no access to any subscriptions"
-                }),
-                status_code=404,
-                mimetype="application/json"
-            )
+            raise Exception("No subscriptions found - The service principal has no access to any subscriptions")
         
         logger.info(f"✓ Found {len(subscriptions)} subscriptions")
         
@@ -455,74 +443,36 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logger.info("✓ Email sent successfully with CSV attachment")
         
         logger.info('=' * 80)
-        logger.info('Execution completed successfully!')
+        logger.info('✅ Execution completed successfully!')
+        logger.info(f'   Total Cost: ${total_cost:,.2f} USD')
+        logger.info(f'   Subscriptions: {len(all_costs_data)}')
+        logger.info(f'   Report: {filename}')
         logger.info('=' * 80)
-        
-        return func.HttpResponse(
-            body=json.dumps({
-                "status": "success",
-                "message": "Cost report CSV sent directly via email",
-                "report_period": f"{start_date_display} to {end_date_display}",
-                "total_subscriptions": len(all_costs_data),
-                "total_cost": round(total_cost, 2),
-                "filename": filename,
-                "email_sent": True
-            }),
-            status_code=200,
-            mimetype="application/json"
-        )
         
     except ValueError as ve:
         error_msg = f"Configuration error: {str(ve)}"
         logger.error('=' * 80)
-        logger.error('EXECUTION FAILED - Configuration Error')
+        logger.error('❌ EXECUTION FAILED - Configuration Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return func.HttpResponse(
-            body=json.dumps({
-                "error": error_msg,
-                "type": "ConfigurationError",
-                "traceback": traceback.format_exc()
-            }),
-            status_code=500,
-            mimetype="application/json"
-        )
+        raise
         
     except requests.exceptions.RequestException as re:
         error_msg = f"Azure API error: {str(re)}"
         logger.error('=' * 80)
-        logger.error('EXECUTION FAILED - API Error')
+        logger.error('❌ EXECUTION FAILED - API Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return func.HttpResponse(
-            body=json.dumps({
-                "error": error_msg,
-                "type": "APIError",
-                "traceback": traceback.format_exc()
-            }),
-            status_code=500,
-            mimetype="application/json"
-        )
+        raise
         
     except Exception as e:
         error_msg = f"Unexpected error: {str(e)}"
         logger.error('=' * 80)
-        logger.error('EXECUTION FAILED - Unexpected Error')
+        logger.error('❌ EXECUTION FAILED - Unexpected Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return func.HttpResponse(
-            body=json.dumps({
-                "error": str(e),
-                "type": type(e).__name__,
-                "traceback": traceback.format_exc()
-            }),
-            status_code=500,
-            mimetype="application/json"
-        )
+        raise

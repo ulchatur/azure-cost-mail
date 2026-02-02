@@ -366,7 +366,7 @@ def main(mytimer: func.TimerRequest) -> None:
     
     # Log timer information
     if mytimer.past_due:
-        logger.info('⚠️  The timer is past due!')
+        logger.info('The timer is past due!')
     
     logger.info(f'Timer trigger fired at: {datetime.datetime.utcnow()}')
     
@@ -389,17 +389,17 @@ def main(mytimer: func.TimerRequest) -> None:
             logger.error("Please configure these in Azure Function App Settings")
             raise ValueError(error_msg)
         
-        logger.info("✓ All environment variables present")
+        logger.info("All environment variables present")
         
         # Step 2: Get access token
         logger.info("Step 2: Acquiring Azure access token...")
         token = get_access_token()
-        logger.info("✓ Access token acquired")
+        logger.info("Access token acquired")
         
         # Step 3: Calculate date range (now returns 4 values)
         logger.info("Step 3: Calculating date range...")
         start_date_api, end_date_api, start_date_display, end_date_display = get_previous_month_range()
-        logger.info(f"✓ Date range: {start_date_display} to {end_date_display}")
+        logger.info(f"Date range: {start_date_display} to {end_date_display}")
         
         # Step 4: Fetch subscriptions
         logger.info("Step 4: Fetching all subscriptions...")
@@ -409,7 +409,7 @@ def main(mytimer: func.TimerRequest) -> None:
             logger.warning("No subscriptions found")
             raise Exception("No subscriptions found - The service principal has no access to any subscriptions")
         
-        logger.info(f"✓ Found {len(subscriptions)} subscriptions")
+        logger.info(f"Found {len(subscriptions)} subscriptions")
         
         # Step 5: Fetch cost data for each subscription (using API format dates)
         logger.info("Step 5: Fetching cost data for all subscriptions...")
@@ -429,21 +429,21 @@ def main(mytimer: func.TimerRequest) -> None:
                 "cost_data": cost_data
             })
         
-        logger.info("✓ Cost data fetched for all subscriptions")
+        logger.info("Cost data fetched for all subscriptions")
         
         # Step 6: Generate CSV file (using display format dates)
         logger.info("Step 6: Generating CSV report...")
         csv_content, total_cost = generate_csv(all_costs_data, start_date_display, end_date_display)
         filename = f"azure_cost_report_{start_date_display}_to_{end_date_display}.csv"
-        logger.info("✓ CSV report generated")
+        logger.info("CSV report generated")
         
         # Step 7: Send email with CSV attachment (using display format dates)
         logger.info("Step 7: Sending email with CSV attachment...")
         send_email_with_csv_attachment(csv_content, filename, start_date_display, end_date_display, total_cost, len(all_costs_data))
-        logger.info("✓ Email sent successfully with CSV attachment")
+        logger.info("Email sent successfully with CSV attachment")
         
         logger.info('=' * 80)
-        logger.info('✅ Execution completed successfully!')
+        logger.info('Execution completed successfully!')
         logger.info(f'   Total Cost: ${total_cost:,.2f} USD')
         logger.info(f'   Subscriptions: {len(all_costs_data)}')
         logger.info(f'   Report: {filename}')
@@ -452,7 +452,7 @@ def main(mytimer: func.TimerRequest) -> None:
     except ValueError as ve:
         error_msg = f"Configuration error: {str(ve)}"
         logger.error('=' * 80)
-        logger.error('❌ EXECUTION FAILED - Configuration Error')
+        logger.error('EXECUTION FAILED - Configuration Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Traceback: {traceback.format_exc()}")
@@ -461,7 +461,7 @@ def main(mytimer: func.TimerRequest) -> None:
     except requests.exceptions.RequestException as re:
         error_msg = f"Azure API error: {str(re)}"
         logger.error('=' * 80)
-        logger.error('❌ EXECUTION FAILED - API Error')
+        logger.error('EXECUTION FAILED - API Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Traceback: {traceback.format_exc()}")
@@ -470,7 +470,7 @@ def main(mytimer: func.TimerRequest) -> None:
     except Exception as e:
         error_msg = f"Unexpected error: {str(e)}"
         logger.error('=' * 80)
-        logger.error('❌ EXECUTION FAILED - Unexpected Error')
+        logger.error('EXECUTION FAILED - Unexpected Error')
         logger.error('=' * 80)
         logger.error(error_msg)
         logger.error(f"Error type: {type(e).__name__}")

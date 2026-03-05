@@ -1,0 +1,130 @@
+{
+  "mode": "Indexed",
+  "parameters": {
+    "amplsName": {
+      "type": "String",
+      "metadata": {
+        "displayName": "AMPLS Name",
+        "description": "Naam of your existing Azure Monitor Private Link Scope"
+      }
+    },
+    "amplsResourceGroup": {
+      "type": "String",
+      "metadata": {
+        "displayName": "AMPLS Resource Group",
+        "description": "Resource Group of existing AMPLS"
+      }
+    },
+    "effect": {
+      "type": "String",
+      "defaultValue": "DeployIfNotExists",
+      "allowedValues": [
+        "DeployIfNotExists",
+        "Disabled"
+      ],
+      "metadata": {
+        "displayName": "Effect",
+        "description": "DeployIfNotExists = auto attach, Disabled = off"
+      }
+    }
+  },
+  "policyRule": {
+    "if": {
+      "anyOf": [
+        {
+          "field": "type",
+          "equals": "Microsoft.OperationalInsights/workspaces"
+        },
+        {
+          "field": "type",
+          "equals": "Microsoft.Insights/components"
+        }
+      ]
+    },
+    "then": {
+      "effect": "[parameters('effect')]",
+      "details": {
+        "type": "microsoft.insights/privateLinkScopes/scopedResources",
+        "resourceGroupName": "[parameters('amplsResourceGroup')]",
+        "existenceCondition": {
+          "field": "microsoft.insights/privateLinkScopes/scopedResources/linkedResourceId",
+          "equals": "[field('id')]"
+        },
+        "roleDefinitionIds": [],
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "parameters": {
+              "resourceId": {
+                "value": "[field('id')]"
+              },
+              "resourceName": {
+                "value": "[field('name')]"
+              },
+              "resourceType": {
+                "value": "[field('type')]"
+              },
+              "amplsName": {
+                "value": "[parameters('amplsName')]"
+              },
+              "amplsResourceGroup": {
+                "value": "[parameters('amplsResourceGroup')]"
+              }
+            },
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "resourceName": {
+                  "value": "[field('name')]",
+                  "type": "string"
+                },
+                "resourceType": {
+                  "type": "string"
+                },
+                "amplsName": {
+                  "type": "string"
+                },
+                "amplsResourceGroup": {
+                  "type": "string"
+                }
+              },
+              "variables": {
+                "scopedPrefix": "[if(equals(parameters('resourceType'), 'Microsoft.OperationalInsights/workspaces'), 'scoped-law-', 'scoped-ai-')]",
+                "scopedResourceName": "[concat(parameters('amplsName'), '/', variables('scopedPrefix'), parameters('resourceName'))]"
+              },
+              "resources": [
+                {
+                  "type": "Microsoft.Resources/deployments",
+                  "apiVersion": "2021-04-01",
+                  "name": "[concat('deploy-scoped-', parameters('resourceName'))]",
+                  "resourceGroup": "[parameters('amplsResourceGroup')]",
+                  "properties": {
+                    "mode": "Incremental",
+                    "template": {
+                      "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                      "contentVersion": "1.0.0.0",
+                      "resources": [
+                        {
+                          "type": "microsoft.insights/privateLinkScopes/scopedResources",
+                          "apiVersion": "2021-07-01-preview",
+                          "name": "[variables('scopedResourceName')]",
+                          "properties": {
+                            "linkedResourceId": "[parameters('resourceId')]"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

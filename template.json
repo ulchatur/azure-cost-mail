@@ -1,0 +1,132 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "existingKeyVaultName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of your existing Key Vault."
+      }
+    },
+    "existingKeyVaultResourceGroup": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]",
+      "metadata": {
+        "description": "Resource group of the existing Key Vault (defaults to current RG)."
+      }
+    },
+    "existingLogicAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of your existing Logic App Standard site."
+      }
+    },
+    "existingLogicAppResourceGroup": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]",
+      "metadata": {
+        "description": "Resource group of the existing Logic App Standard (defaults to current RG)."
+      }
+    },
+    "existingAppServicePlanId": {
+      "type": "string",
+      "metadata": {
+        "description": "Full resource ID of the existing App Service Plan (Workflow Standard WS1+) hosting the Logic App."
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the storage account used by Logic App Standard (must already exist or will be created)."
+      }
+    },
+    "TeamsWebhook": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Teams Webhook URL to send PIM notifications."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for any new resources."
+      }
+    },
+    "Timezone": {
+      "type": "string",
+      "defaultValue": "US Mountain Standard Time",
+      "metadata": {
+        "description": "Timezone full name for timestamp conversion."
+      }
+    }
+  },
+  "variables": {
+    "keyVaultResourceId": "[resourceId(parameters('existingKeyVaultResourceGroup'), 'Microsoft.KeyVault/vaults', parameters('existingKeyVaultName'))]",
+    "logicAppResourceId": "[resourceId(parameters('existingLogicAppResourceGroup'), 'Microsoft.Web/sites', parameters('existingLogicAppName'))]",
+    "keyVaultSecretUri": "[concat('https://', parameters('existingKeyVaultName'), '.vault.azure.net/secrets/TeamsWebhook')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[concat(parameters('existingKeyVaultName'), '/TeamsWebhook')]",
+      "properties": {
+        "value": "[parameters('TeamsWebhook')]",
+        "attributes": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+      "apiVersion": "2023-07-01",
+      "name": "[concat(parameters('existingKeyVaultName'), '/add')]",
+      "dependsOn": [],
+      "properties": {
+        "accessPolicies": [
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[reference(variables('logicAppResourceId'), '2022-09-01', 'full').identity.principalId]",
+            "permissions": {
+              "secrets": ["get", "list"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('existingLogicAppName'), '/appsettings')]",
+      "properties": {
+        "APP_KIND": "workflowapp",
+        "FUNCTIONS_EXTENSION_VERSION": "~4",
+        "FUNCTIONS_WORKER_RUNTIME": "node",
+        "AzureWebJobsStorage": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('storageAccountName'), ';EndpointSuffix=core.windows.net;AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-01-01').keys[0].value)]",
+        "WEBSITE_NODE_DEFAULT_VERSION": "~18",
+        "KV_SECRET_URI": "[variables('keyVaultSecretUri')]",
+        "PIM_TIMEZONE": "[parameters('Timezone')]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/hostNameBindings",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('existingLogicAppName'), '/', parameters('existingLogicAppName'), '.azurewebsites.net')]",
+      "dependsOn": [],
+      "properties": {
+        "siteName": "[parameters('existingLogicAppName')]"
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppPrincipalId": {
+      "type": "string",
+      "value": "[reference(variables('logicAppResourceId'), '2022-09-01', 'full').identity.principalId]"
+    },
+    "keyVaultSecretUri": {
+      "type": "string",
+      "value": "[variables('keyVaultSecretUri')]"
+    }
+  }
+}

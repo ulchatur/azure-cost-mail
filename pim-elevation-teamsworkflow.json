@@ -1,0 +1,167 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "actions": {
+      "Get_Teams_Webhook_From_KeyVault": {
+        "type": "Http",
+        "inputs": {
+          "method": "GET",
+          "uri": "@{appsetting('KV_SECRET_URI')}?api-version=7.4",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://vault.azure.net"
+          }
+        },
+        "runAfter": {},
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": ["outputs"]
+          }
+        }
+      },
+      "HTTP_Get_PIM_Activation_Requests": {
+        "type": "Http",
+        "inputs": {
+          "method": "GET",
+          "uri": "https://graph.microsoft.com/beta/auditLogs/directoryAudits",
+          "queries": {
+            "$filter": "activityDisplayName eq 'Add member to role approval requested (PIM activation)' and activityDateTime ge @{subtractFromTime(utcNow(),10,'Minute')} and activityDateTime le @{subtractFromTime(utcNow(),5,'Minute')}"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://graph.microsoft.com"
+          }
+        },
+        "runAfter": {
+          "Get_Teams_Webhook_From_KeyVault": ["Succeeded"]
+        }
+      },
+      "Parse_JSON_PIM_Activation_Requests": {
+        "type": "ParseJson",
+        "inputs": {
+          "content": "@body('HTTP_Get_PIM_Activation_Requests')",
+          "schema": {
+            "properties": {
+              "@@odata.context": { "type": "string" },
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "activityDateTime": { "type": "string" },
+                    "activityDisplayName": { "type": ["string","null"] },
+                    "additionalDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": { "type": "string" },
+                          "value": { "type": "string" }
+                        },
+                        "required": ["key","value"]
+                      }
+                    },
+                    "category": { "type": "string" },
+                    "correlationId": { "type": "string" },
+                    "id": { "type": "string" },
+                    "initiatedBy": {
+                      "type": "object",
+                      "properties": {
+                        "app": {},
+                        "user": {
+                          "type": "object",
+                          "properties": {
+                            "displayName": { "type": ["string","null"] },
+                            "id": { "type": "string" },
+                            "userPrincipalName": { "type": "string" }
+                          }
+                        }
+                      }
+                    },
+                    "loggedByService": { "type": "string" },
+                    "operationType": { "type": "string" },
+                    "result": { "type": "string" },
+                    "resultReason": { "type": "string" },
+                    "targetResources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "displayName": { "type": ["string","null"] },
+                          "id": { "type": "string" },
+                          "type": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "type": "object"
+          }
+        },
+        "runAfter": {
+          "HTTP_Get_PIM_Activation_Requests": ["Succeeded"]
+        }
+      },
+      "For_each_activation_request": {
+        "type": "Foreach",
+        "foreach": "@body('Parse_JSON_PIM_Activation_Requests')?['value']",
+        "actions": {
+          "Teams_Notif_PIM_Activation_Request": {
+            "type": "Http",
+            "inputs": {
+              "method": "POST",
+              "uri": "@body('Get_Teams_Webhook_From_KeyVault')?['value']",
+              "headers": {
+                "Content-type": "application/json"
+              },
+              "body": {
+                "type": "message",
+                "attachments": [
+                  {
+                    "contentType": "application/vnd.microsoft.card.adaptive",
+                    "contentUrl": null,
+                    "content": {
+                      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                      "type": "AdaptiveCard",
+                      "version": "1.0",
+                      "msteams": { "width": "full" },
+                      "body": [
+                        {
+                          "type": "TextBlock",
+                          "id": "acTitle",
+                          "size": "large",
+                          "weight": "bolder",
+                          "wrap": true,
+                          "text": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'New PIM elevation request for Azure resources', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'New PIM elevation request for Microsoft Entra Roles', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'New PIM elevation request for Groups', '')))}"
+                        },
+                        {
+                          "type": "FactSet",
+                          "id": "acFactSet",
+                          "facts": [
+                            {
+                              "title": "*User:*",
+                              "value": "@{items('For_each_activation_request')?['initiatedBy']?['user']?['userPrincipalName']}"
+                            },
+                            {
+                              "title": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'Azure Role', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'Entra Role', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'Membership Type', '')))}:",
+                              "value": " @{items('For_each_activation_request')?['targetResources'][0]['displayName']}"
+                            },
+                            {
+                              "title": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'Subscription', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'Tenant Name', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'Group Name', '')))}:",
+                              "value": "@{items('For_each_activation_request')?['targetResources'][3]['displayName']}"
+                            },
+                            {
+                              "title": "Justification:",
+                              "value": "@{items('For_each_activation_request')?['resultReason']}"
+                            },
+                            {
+                              "title": "Start Time:",
+                              "value": "@{formatDateTime(convertTimeZone(if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), items('For_each_activation_request')?['additionalDetails'][2]['value'], ''))), 'UTC', appsetting('PIM_TIMEZONE')), 'dd/MM/yyyy HH:mm:ss')}"
+                            },
+                            {
+                              "title": "Expiration Time:",
+                              "value": "@{formatDateTime(convertTimeZone(if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), items('For_each_activation_request')?['additionalDetails'][4]['value'], if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), items('For_each_activation_request')?['additionalDetails'][4]['value'], if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], ''))), 'UTC', appsetting('PIM_TIMEZONE')), 'dd/MM/yyyy HH:mm:ss')}"
+                            }
+                          

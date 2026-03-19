@@ -1,0 +1,164 @@
+{
+  "properties": {
+    "@@odata.context": {
+      "type": "string"
+    },
+    "value": {
+      "items": {
+        "properties": {
+          "activityDateTime": {
+            "type": "string"
+          },
+          "activityDisplayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "additionalDetails": {
+            "items": {
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "category": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "initiatedBy": {
+            "properties": {
+              "app": {},
+              "user": {
+                "properties": {
+                  "displayName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "homeTenantId": {},
+                  "homeTenantName": {},
+                  "id": {
+                    "type": "string"
+                  },
+                  "ipAddress": {},
+                  "userPrincipalName": {
+                    "type": "string"
+                  },
+                  "userType": {}
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "loggedByService": {
+            "type": "string"
+          },
+          "operationType": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "resultReason": {
+            "type": "string"
+          },
+          "targetResources": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "groupType": {},
+                "id": {
+                  "type": "string"
+                },
+                "modifiedProperties": {
+                  "items": {
+                    "properties": {
+                      "displayName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "newValue": {
+                        "type": "string"
+                      },
+                      "oldValue": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "displayName",
+                      "oldValue",
+                      "newValue"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "userPrincipalName": {}
+              },
+              "required": [
+                "id",
+                "displayName",
+                "type",
+                "userPrincipalName",
+                "groupType",
+                "modifiedProperties"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "userAgent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "correlationId",
+          "result",
+          "resultReason",
+          "activityDisplayName",
+          "activityDateTime",
+          "loggedByService",
+          "operationType",
+          "userAgent",
+          "initiatedBy",
+          "targetResources",
+          "additionalDetails"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

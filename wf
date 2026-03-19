@@ -1,0 +1,336 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "parameters": {
+            "timezone": {
+                "type": "string",
+                "defaultValue": "US Mountain Standard Time"
+            }
+        },
+        "actions": {
+            "Get_Teams_Webhook_secret": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "referenceName": "keyvault"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/secrets/@{encodeURIComponent('TeamsWebhook')}/value"
+                },
+                "runAfter": {},
+                "runtimeConfiguration": {
+                    "secureData": {
+                        "properties": [
+                            "inputs",
+                            "outputs"
+                        ]
+                    }
+                }
+            },
+            "HTTP_Get_PIM_Activation_Requests": {
+                "type": "Http",
+                "inputs": {
+                    "uri": "https://graph.microsoft.com/beta/auditLogs/directoryAudits",
+                    "method": "GET",
+                    "queries": {
+                        "$filter": "activityDisplayName eq 'Add member to role approval requested(PIM activation)' and activityDateTime ge @{subtractFromTime(utcNow(),10,'Minute')} and activityDateTime le @{subtractFromTime(utcNow(),5,'Minute')}"
+                    },
+                    "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://graph.microsoft.com"
+                    }
+                },
+                "runAfter": {
+                    "Get_Teams_Webhook_secret": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                }
+            },
+            "Parse_JSON_PIM_Activation_Requests": {
+                "type": "ParseJson",
+                "inputs": {
+                    "content": "@body('HTTP_Get_PIM_Activation_Requests')",
+                    "schema": {
+                        "properties": {
+                            "@@odata.context": {
+                                "type": "string"
+                            },
+                            "value": {
+                                "items": {
+                                    "properties": {
+                                        "activityDateTime": {
+                                            "type": "string"
+                                        },
+                                        "activityDisplayName": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "additionalDetails": {
+                                            "items": {
+                                                "properties": {
+                                                    "key": {
+                                                        "type": "string"
+                                                    },
+                                                    "value": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "key",
+                                                    "value"
+                                                ],
+                                                "type": "object"
+                                            },
+                                            "type": "array"
+                                        },
+                                        "category": {
+                                            "type": "string"
+                                        },
+                                        "correlationId": {
+                                            "type": "string"
+                                        },
+                                        "id": {
+                                            "type": "string"
+                                        },
+                                        "initiatedBy": {
+                                            "properties": {
+                                                "app": {},
+                                                "user": {
+                                                    "properties": {
+                                                        "displayName": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "homeTenantId": {},
+                                                        "homeTenantName": {},
+                                                        "id": {
+                                                            "type": "string"
+                                                        },
+                                                        "ipAddress": {},
+                                                        "userPrincipalName": {
+                                                            "type": "string"
+                                                        },
+                                                        "userType": {}
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "loggedByService": {
+                                            "type": "string"
+                                        },
+                                        "operationType": {
+                                            "type": "string"
+                                        },
+                                        "result": {
+                                            "type": "string"
+                                        },
+                                        "resultReason": {
+                                            "type": "string"
+                                        },
+                                        "targetResources": {
+                                            "items": {
+                                                "properties": {
+                                                    "displayName": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "groupType": {},
+                                                    "id": {
+                                                        "type": "string"
+                                                    },
+                                                    "modifiedProperties": {
+                                                        "items": {
+                                                            "properties": {
+                                                                "displayName": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "newValue": {
+                                                                    "type": "string"
+                                                                },
+                                                                "oldValue": {
+                                                                    "type": "string"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "displayName",
+                                                                "oldValue",
+                                                                "newValue"
+                                                            ],
+                                                            "type": "object"
+                                                        },
+                                                        "type": "array"
+                                                    },
+                                                    "type": {
+                                                        "type": "string"
+                                                    },
+                                                    "userPrincipalName": {}
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "displayName",
+                                                    "type",
+                                                    "userPrincipalName",
+                                                    "groupType",
+                                                    "modifiedProperties"
+                                                ],
+                                                "type": "object"
+                                            },
+                                            "type": "array"
+                                        },
+                                        "userAgent": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "id",
+                                        "category",
+                                        "correlationId",
+                                        "result",
+                                        "resultReason",
+                                        "activityDisplayName",
+                                        "activityDateTime",
+                                        "loggedByService",
+                                        "operationType",
+                                        "userAgent",
+                                        "initiatedBy",
+                                        "targetResources",
+                                        "additionalDetails"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "HTTP_Get_PIM_Activation_Requests": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "For_each_activation_request": {
+                "type": "Foreach",
+                "foreach": "@body('Parse_JSON_PIM_Activation_Requests')?['value']",
+                "actions": {
+                    "Teams_Notif_PIM_Activation_Request": {
+                        "type": "Http",
+                        "inputs": {
+                            "uri": "@body('Get_Teams_Webhook_secret')?['value']",
+                            "method": "POST",
+                            "headers": {
+                                "Content-type": "application/json"
+                            },
+                            "body": {
+                                "attachments": [
+                                    {
+                                        "content": {
+                                            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                                            "actions": [
+                                                {
+                                                    "title": "More Info",
+                                                    "type": "Action.OpenUrl",
+                                                    "url": "https://portal.azure.com/#view/Microsoft_Azure_PIMCommon/ApproveRequestMenuBlade/~/@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'azurerbac', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'aadmigratedroles', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'aadgroup', '')))}"
+                                                }
+                                            ],
+                                            "body": [
+                                                {
+                                                    "id": "acTitle",
+                                                    "size": "large",
+                                                    "text": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'New PIM elevation request for Azure resources', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'New PIM elevation request for Microsoft Entra Roles', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'New PIM elevation request for Groups', '')))}",
+                                                    "type": "TextBlock",
+                                                    "weight": "bolder",
+                                                    "wrap": true
+                                                },
+                                                {
+                                                    "facts": [
+                                                        {
+                                                            "title": "*User:*",
+                                                            "value": "@{items('For_each_activation_request')?['initiatedBy']?['user']?['userPrincipalName']}"
+                                                        },
+                                                        {
+                                                            "title": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'Azure Role', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'Entra Role', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'Membership Type', '')))}:",
+                                                            "value": " @{items('For_each_activation_request')?['targetResources'][0]['displayName']}"
+                                                        },
+                                                        {
+                                                            "title": "@{if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), 'Subscription', if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), 'Tenant Name', if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), 'Group Name', '')))}:",
+                                                            "value": "@{items('For_each_activation_request')?['targetResources'][3]['displayName']}"
+                                                        },
+                                                        {
+                                                            "title": "Justification:",
+                                                            "value": "@{items('For_each_activation_request')?['resultReason']}"
+                                                        },
+                                                        {
+                                                            "title": "Start Time:",
+                                                            "value": "@{formatDateTime(convertTimeZone(if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), items('For_each_activation_request')?['additionalDetails'][2]['value'], ''))), 'UTC', parameters('timezone')), 'dd/MM/yyyy HH:mm:ss')}"
+                                                        },
+                                                        {
+                                                            "title": "Expiration Time:",
+                                                            "value": "@{formatDateTime(convertTimeZone(if(equals(items('For_each_activation_request')?['category'], 'ResourceManagement'), items('For_each_activation_request')?['additionalDetails'][4]['value'], if(equals(items('For_each_activation_request')?['category'], 'RoleManagement'), items('For_each_activation_request')?['additionalDetails'][4]['value'], if(equals(items('For_each_activation_request')?['category'], 'GroupManagement'), items('For_each_activation_request')?['additionalDetails'][3]['value'], ''))), 'UTC', parameters('timezone')), 'dd/MM/yyyy HH:mm:ss')}"
+                                                        }
+                                                    ],
+                                                    "id": "acFactSet",
+                                                    "type": "FactSet"
+                                                }
+                                            ],
+                                            "msteams": {
+                                                "width": "full"
+                                            },
+                                            "type": "AdaptiveCard",
+                                            "version": "1.0"
+                                        },
+                                        "contentType": "application/vnd.microsoft.card.adaptive",
+                                        "contentUrl": null
+                                    }
+                                ],
+                                "type": "message"
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "contentTransfer": {
+                                "transferMode": "Chunked"
+                            }
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Parse_JSON_PIM_Activation_Requests": [
+                        "SUCCEEDED"
+                    ]
+                }
+            }
+        },
+        "outputs": {},
+        "triggers": {
+            "Recurrence": {
+                "type": "Recurrence",
+                "recurrence": {
+                    "interval": 1,
+                    "frequency": "Minute",
+                    "timeZone": "US Mountain Standard Time"
+                }
+            }
+        }
+    },
+    "kind": "Stateful"
+}

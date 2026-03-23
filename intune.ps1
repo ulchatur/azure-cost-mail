@@ -37,3 +37,9 @@ Connect-MgGraph -Scopes Application.Read.All, AppRoleAssignment.ReadWrite.All -T
 
 Get-MgServicePrincipal -Search "DisplayName:la-hub-teams-pim-notify" -ConsistencyLevel eventual | Select DisplayName, Id
 Get-MgServicePrincipal -Filter "id eq 'c36af955-3ca5-41bd-a9b8-3e975f2f1538'" | Select DisplayName, Id
+
+
+$MIID = Get-MgServicePrincipal -Search "DisplayName:la-hub-teams-pim-notify" -ConsistencyLevel eventual
+$msgraph = Get-MgServicePrincipal -Filter "AppId eq '00000003-0000-0000-c000-000000000000'"
+$role = $msgraph.AppRoles | Where-Object {$_.Value -eq "AuditLog.Read.All"}
+New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $MIID.id -PrincipalId $MIID.id -ResourceId $msgraph.Id -AppRoleId $role.Id

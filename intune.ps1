@@ -28,3 +28,5 @@ $msgraph = Get-MgServicePrincipal -Filter "AppId eq '00000003-0000-0000-c000-000
 $roleName = "AuditLog.Read.All"
 $role = $msgraph.AppRoles | Where-Object {$_.Value -eq $roleName}
 New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $MIID.id -PrincipalId $MIID.id -ResourceId $msgraph.Id -AppRoleId $role.Id
+
+Get-MgContext | Select Account, TenantId

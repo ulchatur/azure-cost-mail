@@ -33,3 +33,7 @@ Get-MgContext | Select Account, TenantId
 
 Disconnect-MgGraph
 Connect-MgGraph -Scopes Application.Read.All, AppRoleAssignment.ReadWrite.All -TenantId "eacd16bf-dc0e-44db-8e3f-be370c71feca"
+
+
+Get-MgServicePrincipal -Search "DisplayName:la-hub-teams-pim-notify" -ConsistencyLevel eventual | Select DisplayName, Id
+Get-MgServicePrincipal -Filter "id eq 'c36af955-3ca5-41bd-a9b8-3e975f2f1538'" | Select DisplayName, Id

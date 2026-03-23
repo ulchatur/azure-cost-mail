@@ -18,3 +18,13 @@ foreach ($role in $roleName) {
 }
 
 Disconnect-MgGraph
+
+
+
+
+$MI = "c36af955-3ca5-41bd-a9b8-3e975f2f1538"
+$MIID = Get-MgServicePrincipal -ServicePrincipalId $MI
+$msgraph = Get-MgServicePrincipal -Filter "AppId eq '00000003-0000-0000-c000-000000000000'"
+$roleName = "AuditLog.Read.All"
+$role = $msgraph.AppRoles | Where-Object {$_.Value -eq $roleName}
+New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $MIID.id -PrincipalId $MIID.id -ResourceId $msgraph.Id -AppRoleId $role.Id

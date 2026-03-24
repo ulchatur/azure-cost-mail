@@ -1,0 +1,3 @@
+use case - I have a AMPLS in subscription 1 and have log analytics and application insights in subscription 2. In this way, I have multiple subscription where log analytics workspace and application insights are getting created in different subscription. I am trying to build a azure policy which will attach the AMPLS in subscription1 to log analytics/application insights in different subscription. Azure policy has to modify the existing/newly created log analytics and application insights and attach it to AMPLS present in subscription1. 
+
+Is this possible or not? Do azure policy has any limitations for this ?

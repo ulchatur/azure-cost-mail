@@ -1,0 +1,139 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "timezone": {
+        "type": "string",
+        "defaultValue": "India Standard Time"
+      }
+    },
+    "triggers": {
+      "Recurrence": {
+        "type": "Recurrence",
+        "recurrence": {
+          "interval": 5,
+          "frequency": "Minute"
+        }
+      }
+    },
+    "actions": {
+      "Get_Teams_Webhook_secret": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "referenceName": "keyvault"
+            }
+          },
+          "method": "get",
+          "path": "/secrets/@{encodeURIComponent('TeamsWebhook')}/value"
+        },
+        "runAfter": {},
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": ["inputs", "outputs"]
+          }
+        }
+      },
+      "HTTP_Get_PIM_Activation_Requests": {
+        "type": "Http",
+        "inputs": {
+          "uri": "https://graph.microsoft.com/beta/auditLogs/directoryAudits",
+          "method": "GET",
+          "queries": {
+            "$filter": "activityDisplayName eq 'Add member to role approval requested (PIM activation)' and activityDateTime ge @{subtractFromTime(utcNow(),10,'Minute')} and activityDateTime le @{subtractFromTime(utcNow(),5,'Minute')}"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://graph.microsoft.com"
+          }
+        },
+        "runAfter": {
+          "Get_Teams_Webhook_secret": ["SUCCEEDED"]
+        }
+      },
+      "Parse_JSON_PIM_Activation_Requests": {
+        "type": "ParseJson",
+        "inputs": {
+          "content": "@body('HTTP_Get_PIM_Activation_Requests')",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "HTTP_Get_PIM_Activation_Requests": ["SUCCEEDED"]
+        }
+      },
+      "For_each_activation_request": {
+        "type": "Foreach",
+        "foreach": "@body('Parse_JSON_PIM_Activation_Requests')?['value']",
+        "actions": {
+          "Teams_Notif_PIM_Activation_Request": {
+            "type": "Http",
+            "inputs": {
+              "uri": "@body('Get_Teams_Webhook_secret')?['value']",
+              "method": "POST",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "type": "message",
+                "attachments": [
+                  {
+                    "contentType": "application/vnd.microsoft.card.adaptive",
+                    "content": {
+                      "type": "AdaptiveCard",
+                      "version": "1.0",
+                      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                      "body": [
+                        {
+                          "type": "TextBlock",
+                          "text": "New PIM Activation Request",
+                          "weight": "bolder",
+                          "size": "large",
+                          "wrap": true
+                        },
+                        {
+                          "type": "FactSet",
+                          "facts": [
+                            {
+                              "title": "User:",
+                              "value": "@{items('For_each_activation_request')?['initiatedBy']?['user']?['userPrincipalName']}"
+                            },
+                            {
+                              "title": "Role:",
+                              "value": "@{items('For_each_activation_request')?['targetResources'][0]['displayName']}"
+                            },
+                            {
+                              "title": "Justification:",
+                              "value": "@{items('For_each_activation_request')?['resultReason']}"
+                            },
+                            {
+                              "title": "Time:",
+                              "value": "@{items('For_each_activation_request')?['activityDateTime']}"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "Parse_JSON_PIM_Activation_Requests": ["SUCCEEDED"]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}
